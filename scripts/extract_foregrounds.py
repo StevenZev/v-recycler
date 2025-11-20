@@ -24,13 +24,14 @@ CLASS_MAPPING = {
 }
 
 
-def extract_foreground_grabcut(image_path: str, iterations: int = 5) -> tuple[np.ndarray, np.ndarray]:
+def extract_foreground_grabcut(image_path: str, iterations: int = 5, max_size: int = 1024) -> tuple[np.ndarray, np.ndarray]:
     """
     Extract foreground object using GrabCut algorithm.
     
     Args:
         image_path: Path to input image
         iterations: Number of GrabCut iterations
+        max_size: Maximum dimension for processing (images are resized then upscaled)
         
     Returns:
         Tuple of (rgba_image, mask) as numpy arrays
@@ -40,29 +41,46 @@ def extract_foreground_grabcut(image_path: str, iterations: int = 5) -> tuple[np
     if img is None:
         raise ValueError(f"Could not read image: {image_path}")
     
+    # Store original size
+    orig_h, orig_w = img.shape[:2]
+    
+    # Resize if image is too large (for speed)
+    if max(orig_h, orig_w) > max_size:
+        scale = max_size / max(orig_h, orig_w)
+        new_w = int(orig_w * scale)
+        new_h = int(orig_h * scale)
+        img_resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    else:
+        img_resized = img
+        scale = 1.0
+    
     # Create initial mask and background/foreground models
-    mask = np.zeros(img.shape[:2], np.uint8)
+    mask = np.zeros(img_resized.shape[:2], np.uint8)
     bgd_model = np.zeros((1, 65), np.float64)
     fgd_model = np.zeros((1, 65), np.float64)
     
     # Define rectangle around object (assume object is centered with some margin)
-    h, w = img.shape[:2]
+    h, w = img_resized.shape[:2]
     margin_x = int(w * 0.05)
     margin_y = int(h * 0.05)
     rect = (margin_x, margin_y, w - 2*margin_x, h - 2*margin_y)
     
     # Apply GrabCut
-    cv2.grabCut(img, mask, rect, bgd_model, fgd_model, iterations, cv2.GC_INIT_WITH_RECT)
+    cv2.grabCut(img_resized, mask, rect, bgd_model, fgd_model, iterations, cv2.GC_INIT_WITH_RECT)
     
     # Create binary mask (0 for background, 1 for foreground)
     mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+    
+    # Resize mask back to original size if needed
+    if scale != 1.0:
+        mask2 = cv2.resize(mask2, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
     
     # Apply morphological operations to clean up mask
     kernel = np.ones((3, 3), np.uint8)
     mask2 = cv2.morphologyEx(mask2, cv2.MORPH_CLOSE, kernel, iterations=2)
     mask2 = cv2.morphologyEx(mask2, cv2.MORPH_OPEN, kernel, iterations=1)
     
-    # Convert to RGBA
+    # Convert original (full-res) image to RGBA
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     alpha = (mask2 * 255).astype(np.uint8)
     rgba = np.dstack((img_rgb, alpha))

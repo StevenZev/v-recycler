@@ -1,0 +1,18 @@
+# YOLOv8 Segmentation Dataset Configuration
+# Recyclable Materials Instance Segmentation
+
+# Dataset paths (relative to this file or absolute)
+path: ../data/synthetic  # Root directory
+train: images  # Training images folder
+val: images    # Validation images folder (use same for now, split later)
+
+# Class names
+names:
+  0: plastic
+  1: metal
+  2: glass
+  3: paper_cardboard
+  4: other_trash
+
+# Number of classes
+nc: 5
